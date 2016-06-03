@@ -1,0 +1,64 @@
+# encoding: utf-8
+require 'rubygems'
+require 'bundler'
+Bundler.setup
+
+# The actual server code is in src/server.rb
+
+#require './src/server'
+
+# This server code has changed to series of rb files in the src folder
+
+#require './src/redirect_old_version_server'
+require './src/server_model_data'
+require './src/server_html'
+
+# src/compile_template.rb deals with turning the src/index.html.erb into the main page
+require './src/compile_template'   #Yet to change :-Note this has changed to "require './src/server_html.rb'" which deals with turning the src/default.html.haml into the main page
+
+# The server can run in two modes, 'production' and 'development'
+# the mode is set in the RACK_ENV or RAILS_ENV environment variables
+ENV['RACK_ENV'] = ENV['RAILS_ENV'] if ENV['RAILS_ENV']
+
+# When in production mode, we precompile the templates and javascripts
+if ENV['RACK_ENV'] == 'production'
+  CompileTemplate.new.compile!
+else
+  # When in development mode, we generate templates and javascripts on demand
+  CompileTemplate.new.remove!
+end
+
+# This sets up the bits of the server
+map '/' do
+  # To compress the data going back and forth
+  use Rack::Deflater
+  # This logs access and errors
+  use Rack::CommonLogger
+
+  # This is used in development mode to assemble all the javascripts in src/javascripts
+  # into /assets/application.js and all the stylesheets in src/stylesheets into
+  # /assets/application.css
+  map '/assets' do
+    # https://github.com/sstephenson/sprockets
+    require 'sprockets'
+    require './src/helper'
+    environment = Sprockets::Environment.new
+
+    environment.append_path 'src/javascripts'
+    environment.append_path 'src/stylesheets'
+    environment.append_path 'public/assets'
+    environment.append_path 'contrib'
+
+    # The Helper module is defined in src/helper.rb
+    environment.context_class.class_eval do 
+      include Helper
+    end
+
+    run environment
+  end
+  # This is defined in src/server_model_data.rb 
+    use ServeModelData
+
+  #This is defined in server_html.rb
+    run ServeHTML
+end
